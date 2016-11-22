@@ -6,6 +6,9 @@ import javato.activetesting.analysis.Observer;
 import javato.activetesting.common.Parameters;
 import javato.activetesting.reentrant.IgnoreRentrantLock;
 
+import java.io.FileOutputStream;
+import java.io.ObjectOutputStream;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -123,9 +126,6 @@ public class HybridAnalysis extends AnalysisImpl {
             vcTracker.inc(parent);
             vcTracker.updateClock(child, vc);
             vcTracker.inc(child);
-//
-            System.out.println("Parent: " + parent + " - " + vcTracker.getClock(parent));
-            System.out.println("Child: " +  child + " - " + vcTracker.getClock(child));
         }
     }
 
@@ -210,7 +210,7 @@ public class HybridAnalysis extends AnalysisImpl {
 
     public void finish() {
         synchronized (ActiveChecker.lock) {
-            int nRaces=0; // nRaces must be equal to the number races detected by the hybrid race detector
+            int nRaces = memoryManager.races.size(); // nRaces must be equal to the number races detected by the hybrid race detector
 //    Your code goes here.
 //    In my implementation I had the following code:
 //            nRaces = eb.dumpRaces();
@@ -218,6 +218,18 @@ public class HybridAnalysis extends AnalysisImpl {
 //    This file is used by run.xml to initialize Parameters.errorId with a number from from the list.
 //    Parameters.errorId tells RaceFuzzer the id of the race that RaceFuzzer should try to create
             Parameters.writeIntegerList(Parameters.ERROR_LIST_FILE, nRaces);
+
+            // Code snipped from http://www.vogella.com/tutorials/JavaSerialization/article.html
+            FileOutputStream fos = null;
+            ObjectOutputStream out = null;
+            try {
+                fos = new FileOutputStream(Parameters.ERROR_LOG_FILE);
+                out = new ObjectOutputStream(fos);
+                out.writeObject(new ArrayList<Set<Integer>>(memoryManager.races));
+                out.close();
+            } catch (Exception ex) {
+                ex.printStackTrace();
+            }
         }
     }
 
@@ -312,7 +324,7 @@ public class HybridAnalysis extends AnalysisImpl {
         }
     }
 
-    private enum RWTYPE {READ, WRITE}
+    public enum RWTYPE {READ, WRITE}
 
     private static class MemoryAccess {
         public int iid;
@@ -359,13 +371,13 @@ public class HybridAnalysis extends AnalysisImpl {
                         Set<Integer> newSet = new HashSet<Integer>();
                         newSet.add(previous.iid);
                         newSet.add(memoryAccess.iid);
-                        if (!races.contains(newSet)) {
-                            System.out.println(Observer.getIidToLine(previous.iid));
-                            System.out.println(Observer.getIidToLine(memoryAccess.iid));
-                            System.out.println(previous.vectorClock);
-                            System.out.println(memoryAccess.vectorClock);
-                            System.out.println("\n");
-                        }
+//                        if (!races.contains(newSet)) {
+//                            System.out.println(Observer.getIidToLine(previous.iid));
+//                            System.out.println(Observer.getIidToLine(memoryAccess.iid));
+//                            System.out.println(previous.vectorClock);
+//                            System.out.println(memoryAccess.vectorClock);
+//                            System.out.println("\n");
+//                        }
                         races.add(newSet);
                     }
                 }
