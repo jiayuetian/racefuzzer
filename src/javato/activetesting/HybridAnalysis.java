@@ -60,7 +60,6 @@ public class HybridAnalysis extends AnalysisImpl {
 //    private IgnoreRentrantLock ignoreRentrantLock;
 //    private HybridRaceTracker eb;
     private VectorClockTracker vcTracker;
-    private IgnoreRentrantLock ignoreRentrantLock;
 
     private LockSetManager lockSetManager;
 
@@ -120,10 +119,13 @@ public class HybridAnalysis extends AnalysisImpl {
 //    Your code goes here.
 //    In my implementation I had the following code:
 //            vcTracker.startBefore(parent, child);
-            VectorClock vc = vcTracker.getClock(parent);
+            VectorClock vc = vcTracker.getClock(parent).copy();
             vcTracker.inc(parent);
             vcTracker.updateClock(child, vc);
             vcTracker.inc(child);
+//
+            System.out.println("Parent: " + parent + " - " + vcTracker.getClock(parent));
+            System.out.println("Child: " +  child + " - " + vcTracker.getClock(child));
         }
     }
 
@@ -179,10 +181,11 @@ public class HybridAnalysis extends AnalysisImpl {
             LockSet ls = lockSetManager.getLockSet(thread);
             // Check if adding this event would cause a race condition
             MemoryAccess memoryAccess = new MemoryAccess(
-                    iid, RWTYPE.READ, memory, thread, ls.copy(), vcTracker.getClock(thread)
+                    iid, RWTYPE.READ, memory, thread, ls.copy(), vcTracker.getClock(thread).copy()
             );
             memoryManager.reportRaces(memoryAccess);
             memoryManager.addAccess(memoryAccess);
+            vcTracker.inc(thread);
         }
     }
 
@@ -197,10 +200,11 @@ public class HybridAnalysis extends AnalysisImpl {
             LockSet ls = lockSetManager.getLockSet(thread);
             // Check if adding this event would cause a race condition
             MemoryAccess memoryAccess = new MemoryAccess(
-                    iid, RWTYPE.WRITE, memory, thread, ls.copy(), vcTracker.getClock(thread)
+                    iid, RWTYPE.WRITE, memory, thread, ls.copy(), vcTracker.getClock(thread).copy()
             );
             memoryManager.reportRaces(memoryAccess);
             memoryManager.addAccess(memoryAccess);
+            vcTracker.inc(thread);
         }
     }
 
@@ -213,13 +217,6 @@ public class HybridAnalysis extends AnalysisImpl {
 //    The following method call creates a file "error.list" containing the list of numbers "1,2,3,...,nRaces"
 //    This file is used by run.xml to initialize Parameters.errorId with a number from from the list.
 //    Parameters.errorId tells RaceFuzzer the id of the race that RaceFuzzer should try to create
-            for (Set<Integer> s : memoryManager.races) {
-                System.out.println("RACE:");
-                for (Integer i : s) {
-                    System.out.println(Observer.getIidToLine(i));
-                }
-                System.out.println();
-            }
             Parameters.writeIntegerList(Parameters.ERROR_LIST_FILE, nRaces);
         }
     }
@@ -229,6 +226,12 @@ public class HybridAnalysis extends AnalysisImpl {
             if (this.containsKey(tid)) return this.get(tid);
             return 0;
         }
+
+        VectorClock copy() {
+            VectorClock vc = new VectorClock();
+            vc.putAll(this);
+            return vc;
+        }
     }
 
     private static class VectorClockTracker {
@@ -237,7 +240,7 @@ public class HybridAnalysis extends AnalysisImpl {
         private Map<Integer, VectorClock> notifications = new HashMap<Integer, VectorClock>();
 
         public void notify(int thread, int key) {
-            notifications.put(key, getClock(thread));
+            notifications.put(key, getClock(thread).copy());
         }
 
         public void wait(int thread, int key) {
@@ -246,20 +249,18 @@ public class HybridAnalysis extends AnalysisImpl {
 
         public void inc(int thread) {
             VectorClock vectorClock = getClock(thread);
-            vectorClock.put(thread,vectorClock.containsKey(thread) ? vectorClock.get(thread) + 1 : 1);
+            vectorClock.put(thread,vectorClock.getOrZero(thread) + 1);
         }
 
         public VectorClock getClock(int thread) {
             if (!clocks.containsKey(thread)) {
                 clocks.put(thread, new VectorClock());
             }
-            //Make a copy of the clock
-            VectorClock ret = new VectorClock();
-            ret.putAll(clocks.get(thread));
-            return ret;
+            return clocks.get(thread);
         }
 
         public void updateClock(int thread, VectorClock vc) {
+
             VectorClock vectorClock = getClock(thread);
             for (Integer tid : vc.keySet()) {
                 int val = vectorClock.containsKey(tid) ? vectorClock.get(tid) : 0;  // default to 0
@@ -358,6 +359,13 @@ public class HybridAnalysis extends AnalysisImpl {
                         Set<Integer> newSet = new HashSet<Integer>();
                         newSet.add(previous.iid);
                         newSet.add(memoryAccess.iid);
+                        if (!races.contains(newSet)) {
+                            System.out.println(Observer.getIidToLine(previous.iid));
+                            System.out.println(Observer.getIidToLine(memoryAccess.iid));
+                            System.out.println(previous.vectorClock);
+                            System.out.println(memoryAccess.vectorClock);
+                            System.out.println("\n");
+                        }
                         races.add(newSet);
                     }
                 }
